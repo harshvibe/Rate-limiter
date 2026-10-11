@@ -1,16 +1,14 @@
 package com.rate.limit.controller;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/tests")
 public class RateController {
 
-    private RedisTemplate<String, String> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
 
-    public RateController(RedisTemplate redisTemplate){
+    public RateController(StringRedisTemplate redisTemplate){
         this.redisTemplate=redisTemplate;
     }
 

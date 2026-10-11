@@ -8,6 +8,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class RateLimiterService {
@@ -15,10 +16,24 @@ public class RateLimiterService {
     private static final Logger log = LoggerFactory.getLogger(RateLimiterService.class);
 
     private static final String LUA = """
-            local c = redis.call('INCR', KEYS[1])
-            if c == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
-            local ttl = redis.call('TTL', KEYS[1])
-            return {c, ttl}
+            local key = KEYS[1]
+            local now = tonumber(ARGV[1])
+            local window = tonumber(ARGV[2]) * 1000
+            local limit = tonumber(ARGV[3])
+            local member = ARGV[4]
+
+            redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+            local count = redis.call('ZCARD', key)
+
+            if count < limit then
+                redis.call('ZADD', key, now, member)
+                redis.call('PEXPIRE', key, window)
+                return {1, count + 1, 0}
+            else
+                local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+                local retry = math.ceil((tonumber(oldest[2]) + window - now) / 1000)
+                return {0, count, retry}
+            end
             """;
 
     private final StringRedisTemplate redisTemplate;
@@ -37,16 +52,22 @@ public class RateLimiterService {
     @SuppressWarnings("unchecked")
     public RateLimitResult checkRateLimit(String identifier) {
         String key = "rate_limit:" + identifier;
+        long now = System.currentTimeMillis();
+        String member = now + "-" + UUID.randomUUID();
         try {
             List<Long> res = (List<Long>) redisTemplate.execute(
-                    script, List.of(key), String.valueOf(windowSeconds));
+                    script, List.of(key),
+                    String.valueOf(now),
+                    String.valueOf(windowSeconds),
+                    String.valueOf(maxRequest),
+                    member);
 
-            int count = res.get(0).intValue();
-            long ttl = Math.max(res.get(1), 1);
-            int remaining = Math.max(0, maxRequest - count);
-            boolean allowed = count <= maxRequest;
+            boolean allowed = res.get(0) == 1L;
+            int count = res.get(1).intValue();
+            long retryAfter = allowed ? 0 : Math.max(res.get(2), 1L);
 
-            return new RateLimitResult(allowed, count, remaining, maxRequest, ttl);
+            return new RateLimitResult(allowed, count, Math.max(0, maxRequest - count),
+                    maxRequest, retryAfter);
         } catch (Exception e) {
             // Fail open: if Redis is down, don't take the whole API down
             log.error("Redis unavailable, allowing request for {}", identifier, e);
