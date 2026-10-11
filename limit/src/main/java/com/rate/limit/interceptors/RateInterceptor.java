@@ -6,30 +6,36 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
-import org.springframework.web.servlet.ModelAndView;
 
 @Component
 public class RateInterceptor implements HandlerInterceptor {
-    private RateLimiterService rateLimiterService;
 
-    public RateInterceptor(RateLimiterService rateLimiterService)
-    {
-        this.rateLimiterService=rateLimiterService;
-    }    @Override
+    private final RateLimiterService rateLimiterService;
+
+    public RateInterceptor(RateLimiterService rateLimiterService) {
+        this.rateLimiterService = rateLimiterService;
+    }
+
+    @Override
     public boolean preHandle(HttpServletRequest request,
                              HttpServletResponse response,
-                             Object handler) {
-        String ip=request.getRemoteAddr();
-        RateLimitResult result=rateLimiterService.checkRateLimit(ip);
-        if(!result.isAllowed()){
-            response.setHeader("X-RateLimit-Limit",
-                    String.valueOf(result.getLimit()));
+                             Object handler) throws Exception {
 
-            response.setHeader("X-RateLimit-Remaining",
-                    String.valueOf(result.getRemaining()));
-            response.setStatus(HttpServletResponse.SC_UPGRADE_REQUIRED);
+        String ip = request.getRemoteAddr();
+        RateLimitResult result = rateLimiterService.checkRateLimit(ip);
+
+        response.setHeader("X-RateLimit-Limit", String.valueOf(result.getLimit()));
+        response.setHeader("X-RateLimit-Remaining", String.valueOf(result.getRemaining()));
+
+        if (!result.isAllowed()) {
+            response.setHeader("Retry-After", String.valueOf(result.getRetryAfter()));
+            response.setStatus(429);
+            response.setContentType("application/json");
+            response.getWriter().write(
+                    "{\"error\":\"Too Many Requests\",\"retryAfterSeconds\":"
+                            + result.getRetryAfter() + "}");
+            return false;
         }
         return true;
     }
-
 }
