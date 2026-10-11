@@ -5,12 +5,14 @@ public class RateLimitResult {
     private final int count;
     private final int remaining;
     private final int limit;
+    private final long retryAfter;
 
-    public RateLimitResult(boolean allowed, int count, int remaining, int limit) {
+    public RateLimitResult(boolean allowed, int count, int remaining, int limit,long retryAfter) {
         this.allowed = allowed;
         this.count = count;
         this.remaining = remaining;
         this.limit = limit;
+        this.retryAfter=retryAfter;
     }
 
     public boolean isAllowed() {
@@ -27,5 +29,9 @@ public class RateLimitResult {
 
     public int getLimit() {
         return limit;
+    }
+
+    public long getRetryAfter() {
+        return retryAfter;
     }
 }

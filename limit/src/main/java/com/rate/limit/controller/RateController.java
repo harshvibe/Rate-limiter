@@ -7,8 +7,12 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/tests")
 public class RateController {
-    @Autowired
+
     private RedisTemplate<String, String> redisTemplate;
+
+    public RateController(RedisTemplate redisTemplate){
+        this.redisTemplate=redisTemplate;
+    }
 
     @PostMapping
     public String redisTest() {
